@@ -13,7 +13,7 @@ class AiCostTrendsChartWidget extends ChartWidget
 
     protected int | string | array $columnSpan = 'full';
 
-    protected ?string $maxHeight = '300px';
+    protected ?string $maxHeight = '400px';
 
     protected ?string $pollingInterval = '60s';
 

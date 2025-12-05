@@ -5,6 +5,7 @@ namespace Filament\AiMonitor;
 use Livewire\Livewire;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
+use Filament\AiMonitor\Commands\SeedPricingCommand;
 
 class AiMonitorServiceProvider extends PackageServiceProvider
 {
@@ -20,7 +21,8 @@ class AiMonitorServiceProvider extends PackageServiceProvider
                 'create_ai_requests_table',
                 'create_ai_model_pricings_table',
                 'create_ai_provider_api_keys_table',
-            ]);
+            ])
+            ->hasCommand(SeedPricingCommand::class);
     }
 
     public function packageRegistered(): void
