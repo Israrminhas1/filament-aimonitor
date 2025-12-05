@@ -1,0 +1,54 @@
+{
+    "name": "israrminhas/filament-aimonitor",
+    "description": "AI API cost monitoring and key management plugin for Filament",
+    "keywords": [
+        "laravel",
+        "filament",
+        "ai",
+        "openai",
+        "anthropic",
+        "gemini",
+        "cost-tracking",
+        "api-monitoring"
+    ],
+    "homepage": "https://github.com/israrminhas/filament-aimonitor",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Israr Minhas",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "filament/filament": "^4.0",
+        "illuminate/contracts": "^11.0|^12.0",
+        "spatie/laravel-package-tools": "^1.16"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0",
+        "pestphp/pest": "^2.0|^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Filament\\AiMonitor\\": "src/"
+        },
+        "files": [
+            "src/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Filament\\AiMonitor\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Filament\\AiMonitor\\AiMonitorServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

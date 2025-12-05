@@ -1,0 +1,34 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('ai_model_pricings', function (Blueprint $table) {
+            $table->id();
+            $table->string('provider');
+            $table->string('model')->nullable();
+            $table->decimal('input_per_1k', 12, 8)->default(0);
+            $table->decimal('output_per_1k', 12, 8)->default(0);
+            $table->boolean('is_default')->default(false);
+            $table->boolean('is_fallback')->default(false);
+            $table->boolean('active')->default(true);
+            $table->string('tenant_id')->nullable();
+            $table->timestamps();
+
+            $table->index('provider');
+            $table->index('model');
+            $table->index('tenant_id');
+            $table->index(['provider', 'model', 'active']);
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('ai_model_pricings');
+    }
+};
