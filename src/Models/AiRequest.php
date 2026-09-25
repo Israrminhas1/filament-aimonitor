@@ -2,9 +2,12 @@
 
 namespace Filament\AiMonitor\Models;
 
+use Carbon\CarbonInterface;
+use Filament\AiMonitor\Models\Traits\IsTenantScoped;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Filament\AiMonitor\Models\Traits\IsTenantScoped;
+use Illuminate\Support\Facades\DB;
 
 class AiRequest extends Model
 {
@@ -38,7 +41,32 @@ class AiRequest extends Model
 
     public function user(): BelongsTo
     {
-        $userModel = config('ai-monitor.user_model', 'App\\Models\\User');
-        return $this->belongsTo($userModel);
+        return $this->belongsTo(config('ai-monitor.user_model', 'App\\Models\\User'));
+    }
+
+    public function scopeOccurredBetween(Builder $query, CarbonInterface $from, ?CarbonInterface $until = null): Builder
+    {
+        $query->where($this->qualifyColumn('occurred_at'), '>=', $from);
+
+        if ($until) {
+            $query->where($this->qualifyColumn('occurred_at'), '<', $until);
+        }
+
+        return $query;
+    }
+
+    public function scopeMissingCost(Builder $query): Builder
+    {
+        return $query->whereNull($this->qualifyColumn('cost_usd'));
+    }
+
+    /**
+     * SQL expression that truncates `occurred_at` to a date on the current driver.
+     */
+    public static function dateExpression(?string $connection = null): string
+    {
+        $driver = DB::connection($connection ?? (new static)->getConnectionName())->getDriverName();
+
+        return $driver === 'sqlsrv' ? 'CAST(occurred_at AS date)' : 'DATE(occurred_at)';
     }
 }

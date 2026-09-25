@@ -3,6 +3,7 @@
 namespace Filament\AiMonitor\Models\Traits;
 
 use Filament\AiMonitor\Models\Scopes\TenantScope;
+use Filament\AiMonitor\Support\Tenancy;
 
 trait IsTenantScoped
 {
@@ -11,17 +12,19 @@ trait IsTenantScoped
         static::addGlobalScope(new TenantScope);
 
         static::creating(function ($model) {
-            if (function_exists('tenant') && tenant()) {
-                if (! isset($model->tenant_id)) {
-                    $model->tenant_id = tenant()->id;
-                }
+            if (isset($model->tenant_id)) {
+                return;
+            }
+
+            if (($tenantId = Tenancy::currentId()) !== null) {
+                $model->tenant_id = $tenantId;
             }
         });
     }
 
     public function initializeIsTenantScoped(): void
     {
-        if (property_exists($this, 'fillable') && ! in_array('tenant_id', $this->fillable, true)) {
+        if (! in_array('tenant_id', $this->fillable, true)) {
             $this->fillable[] = 'tenant_id';
         }
     }

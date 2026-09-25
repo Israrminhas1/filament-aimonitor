@@ -2,8 +2,9 @@
 
 namespace Filament\AiMonitor\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Filament\AiMonitor\Models\Traits\IsTenantScoped;
+use Filament\AiMonitor\Services\AiPricingService;
+use Illuminate\Database\Eloquent\Model;
 
 class AiModelPricing extends Model
 {
@@ -27,6 +28,14 @@ class AiModelPricing extends Model
         'is_fallback' => 'bool',
         'active' => 'bool',
     ];
+
+    protected static function booted(): void
+    {
+        $flush = fn () => app(AiPricingService::class)->flushCache();
+
+        static::saved($flush);
+        static::deleted($flush);
+    }
 
     public function scopeActive($query)
     {

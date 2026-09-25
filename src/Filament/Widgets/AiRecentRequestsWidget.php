@@ -2,13 +2,21 @@
 
 namespace Filament\AiMonitor\Filament\Widgets;
 
+use Filament\Actions\Action;
+use Filament\AiMonitor\AiMonitorPlugin;
+use Filament\AiMonitor\Filament\Resources\AiRequestResource;
+use Filament\AiMonitor\Filament\Widgets\Concerns\InteractsWithAiMonitorFilters;
+use Filament\AiMonitor\Models\AiRequest;
+use Filament\AiMonitor\Support\Provider;
+use Filament\AiMonitor\Support\Status;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Filament\AiMonitor\Models\AiRequest;
 
 class AiRecentRequestsWidget extends BaseWidget
 {
+    use InteractsWithAiMonitorFilters;
+
     protected static ?string $heading = 'Recent Requests';
 
     protected static ?int $sort = 6;
@@ -19,16 +27,17 @@ class AiRecentRequestsWidget extends BaseWidget
 
     public function table(Table $table): Table
     {
+        $userTitle = config('ai-monitor.user_title_attribute', 'name');
+        $viewUrl = fn (AiRequest $record): ?string => AiMonitorPlugin::resourceUrl(AiRequestResource::class, 'view', ['record' => $record]);
+
         return $table
-            ->query(
-                AiRequest::query()
-                    ->with('user')
-                    ->latest('occurred_at')
-            )
+            ->query(fn () => $this->applyProviderFilter(AiRequest::query())
+                ->with('user')
+                ->latest('occurred_at'))
             ->columns([
                 Tables\Columns\TextColumn::make('model')
                     ->label('Model')
-                    ->description(fn (AiRequest $record) => ucfirst($record->provider))
+                    ->description(fn (AiRequest $record) => Provider::label($record->provider))
                     ->limit(30),
 
                 Tables\Columns\TextColumn::make('total_tokens')
@@ -39,27 +48,36 @@ class AiRecentRequestsWidget extends BaseWidget
                 Tables\Columns\TextColumn::make('cost_usd')
                     ->label('Cost')
                     ->alignEnd()
-                    ->formatStateUsing(fn ($state) => $state !== null ? '$' . number_format($state, 4) : '--')
+                    ->formatStateUsing(fn ($state) => AiRequestResource::formatCost($state))
+                    ->placeholder('Missing')
                     ->color('warning'),
 
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'success' => 'success',
-                        'error' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn (?string $state) => Status::label($state))
+                    ->color(fn (?string $state): string => Status::color($state)),
 
-                Tables\Columns\TextColumn::make('user.name')
+                Tables\Columns\TextColumn::make("user.{$userTitle}")
                     ->label('User')
-                    ->default('System')
-                    ->limit(15),
+                    ->placeholder('System')
+                    ->limit(20),
 
                 Tables\Columns\TextColumn::make('occurred_at')
                     ->label('Time')
-                    ->since(),
+                    ->since()
+                    ->dateTimeTooltip(),
             ])
-            ->paginated([5, 10])
+            ->recordUrl($viewUrl)
+            ->headerActions([
+                Action::make('viewAll')
+                    ->label('View all')
+                    ->link()
+                    ->url(fn () => AiMonitorPlugin::resourceUrl(AiRequestResource::class))
+                    ->visible(fn () => AiMonitorPlugin::resourceUrl(AiRequestResource::class) !== null),
+            ])
+            ->emptyStateHeading('No requests logged yet')
+            ->emptyStateDescription('Log requests with ai_log([...]) and they will appear here.')
+            ->paginated([5, 10, 25])
             ->defaultPaginationPageOption(5);
     }
 }

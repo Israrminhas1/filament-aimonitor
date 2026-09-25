@@ -3,7 +3,9 @@
 namespace Filament\AiMonitor\Services;
 
 use Carbon\Carbon;
+use Filament\AiMonitor\Events\AiRequestLogged;
 use Filament\AiMonitor\Models\AiRequest;
+use Filament\AiMonitor\Support\Tenancy;
 
 class AiUsageLogger
 {
@@ -13,27 +15,24 @@ class AiUsageLogger
 
     public function log(array $data): AiRequest
     {
-        if (!isset($data['total_tokens'])) {
-            $promptTokens = $data['prompt_tokens'] ?? 0;
-            $completionTokens = $data['completion_tokens'] ?? 0;
-            $data['total_tokens'] = $promptTokens + $completionTokens;
+        if (isset($data['provider'])) {
+            $data['provider'] = strtolower($data['provider']);
         }
 
-        if (!isset($data['meta']) || !is_array($data['meta'])) {
+        if (! isset($data['total_tokens'])) {
+            $data['total_tokens'] = ($data['prompt_tokens'] ?? 0) + ($data['completion_tokens'] ?? 0);
+        }
+
+        if (! isset($data['meta']) || ! is_array($data['meta'])) {
             $data['meta'] = [];
         }
 
-        if (!isset($data['cost_usd']) || $data['cost_usd'] === null) {
-            $provider = $data['provider'] ?? 'unknown';
-            $model = $data['model'] ?? null;
-            $promptTokens = $data['prompt_tokens'] ?? 0;
-            $completionTokens = $data['completion_tokens'] ?? 0;
-
+        if (! isset($data['cost_usd'])) {
             $calculatedCost = $this->pricingService->calculateCost(
-                $provider,
-                $model,
-                $promptTokens,
-                $completionTokens
+                $data['provider'] ?? 'unknown',
+                $data['model'] ?? null,
+                $data['prompt_tokens'] ?? 0,
+                $data['completion_tokens'] ?? 0,
             );
 
             if ($calculatedCost === null) {
@@ -48,42 +47,37 @@ class AiUsageLogger
             $data['meta']['cost_source'] = 'manual';
         }
 
-        if (!isset($data['occurred_at'])) {
-            $data['occurred_at'] = Carbon::now();
+        $data['occurred_at'] ??= Carbon::now();
+        $data['status'] ??= 'success';
+
+        if (empty($data['tenant_id']) && ($tenantId = Tenancy::currentId()) !== null) {
+            $data['tenant_id'] = $tenantId;
         }
 
-        if (!isset($data['status'])) {
-            $data['status'] = 'success';
-        }
+        $request = AiRequest::create($data);
 
-        if (function_exists('tenant') && tenant() && empty($data['tenant_id'])) {
-            $data['tenant_id'] = tenant()->id;
-        }
+        AiRequestLogged::dispatch($request);
 
-        return AiRequest::create($data);
+        return $request;
     }
 
     public function logOpenAi(array $data): AiRequest
     {
-        $data['provider'] = 'openai';
-        return $this->log($data);
+        return $this->log(['provider' => 'openai'] + $data);
     }
 
     public function logAnthropic(array $data): AiRequest
     {
-        $data['provider'] = 'anthropic';
-        return $this->log($data);
+        return $this->log(['provider' => 'anthropic'] + $data);
     }
 
     public function logGemini(array $data): AiRequest
     {
-        $data['provider'] = 'gemini';
-        return $this->log($data);
+        return $this->log(['provider' => 'gemini'] + $data);
     }
 
     public function logPerplexity(array $data): AiRequest
     {
-        $data['provider'] = 'perplexity';
-        return $this->log($data);
+        return $this->log(['provider' => 'perplexity'] + $data);
     }
 }

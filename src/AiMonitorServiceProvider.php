@@ -2,10 +2,11 @@
 
 namespace Filament\AiMonitor;
 
+use Filament\AiMonitor\Commands\RecalculateCostsCommand;
+use Filament\AiMonitor\Commands\SeedPricingCommand;
 use Livewire\Livewire;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
-use Filament\AiMonitor\Commands\SeedPricingCommand;
 
 class AiMonitorServiceProvider extends PackageServiceProvider
 {
@@ -22,22 +23,22 @@ class AiMonitorServiceProvider extends PackageServiceProvider
                 'create_ai_model_pricings_table',
                 'create_ai_provider_api_keys_table',
             ])
-            ->hasCommand(SeedPricingCommand::class);
+            ->hasCommands([
+                SeedPricingCommand::class,
+                RecalculateCostsCommand::class,
+            ]);
     }
 
     public function packageRegistered(): void
     {
         $this->app->singleton(Services\AiPricingService::class);
         $this->app->singleton(Services\AiKeyManager::class);
-        $this->app->singleton(Services\AiUsageLogger::class, function ($app) {
-            return new Services\AiUsageLogger($app->make(Services\AiPricingService::class));
-        });
+        $this->app->singleton(Services\AiUsageLogger::class);
         $this->app->singleton(Services\AiUsageLimitService::class);
     }
 
     public function packageBooted(): void
     {
-        // Register Livewire components
         Livewire::component('ai-stats-overview-widget', Filament\Widgets\AiStatsOverviewWidget::class);
         Livewire::component('ai-cost-trends-chart-widget', Filament\Widgets\AiCostTrendsChartWidget::class);
         Livewire::component('ai-provider-breakdown-widget', Filament\Widgets\AiProviderBreakdownWidget::class);

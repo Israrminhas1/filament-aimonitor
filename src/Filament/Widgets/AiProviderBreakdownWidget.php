@@ -2,12 +2,14 @@
 
 namespace Filament\AiMonitor\Filament\Widgets;
 
+use Filament\AiMonitor\Filament\Widgets\Concerns\InteractsWithAiMonitorFilters;
+use Filament\AiMonitor\Support\Provider;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Facades\DB;
-use Filament\AiMonitor\Models\AiRequest;
 
 class AiProviderBreakdownWidget extends ChartWidget
 {
+    use InteractsWithAiMonitorFilters;
+
     protected ?string $heading = 'Cost by Provider';
 
     protected static ?int $sort = 3;
@@ -18,41 +20,31 @@ class AiProviderBreakdownWidget extends ChartWidget
 
     protected ?string $pollingInterval = '60s';
 
-    public static function canView(): bool
+    public function getDescription(): ?string
     {
-        return AiRequest::where('occurred_at', '>=', now()->subDays(30))
-            ->whereNotNull('cost_usd')
-            ->where('cost_usd', '>', 0)
-            ->exists();
+        return $this->getPeriodLabel();
     }
 
     protected function getData(): array
     {
-        $data = AiRequest::where('occurred_at', '>=', now()->subDays(30))
-            ->select('provider', DB::raw('SUM(cost_usd) as cost'))
+        $data = $this->filteredRequests()
+            ->toBase()
+            ->select('provider')
+            ->selectRaw('COALESCE(SUM(cost_usd), 0) as cost')
             ->groupBy('provider')
+            ->havingRaw('SUM(cost_usd) > 0')
             ->orderByDesc('cost')
             ->get();
-
-        $colors = [
-            'openai' => '#10b981',
-            'anthropic' => '#f59e0b',
-            'gemini' => '#3b82f6',
-            'google' => '#3b82f6',
-            'perplexity' => '#8b5cf6',
-            'cohere' => '#ec4899',
-            'mistral' => '#14b8a6',
-        ];
 
         return [
             'datasets' => [
                 [
-                    'data' => $data->pluck('cost')->map(fn ($v) => round($v ?? 0, 2))->toArray(),
-                    'backgroundColor' => $data->map(fn ($row) => $colors[strtolower($row->provider)] ?? '#6b7280')->toArray(),
+                    'data' => $data->map(fn ($row) => round((float) $row->cost, 2))->all(),
+                    'backgroundColor' => $data->map(fn ($row) => Provider::chartColor($row->provider))->all(),
                     'borderWidth' => 0,
                 ],
             ],
-            'labels' => $data->pluck('provider')->map(fn ($v) => ucfirst($v))->toArray(),
+            'labels' => $data->map(fn ($row) => Provider::label($row->provider))->all(),
         ];
     }
 
@@ -65,6 +57,10 @@ class AiProviderBreakdownWidget extends ChartWidget
     {
         return [
             'cutout' => '60%',
+            'scales' => [
+                'x' => ['display' => false],
+                'y' => ['display' => false],
+            ],
             'plugins' => ['legend' => ['position' => 'bottom']],
         ];
     }

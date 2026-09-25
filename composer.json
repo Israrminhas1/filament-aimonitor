@@ -1,6 +1,6 @@
 {
     "name": "israrminhas/filament-aimonitor",
-    "description": "AI API cost monitoring and key management plugin for Filament",
+    "description": "AI API cost monitoring and key management plugin for Filament v4 & v5",
     "keywords": [
         "laravel",
         "filament",
@@ -9,9 +9,11 @@
         "anthropic",
         "gemini",
         "cost-tracking",
-        "api-monitoring"
+        "api-monitoring",
+        "filament-plugin",
+        "filament-v5"
     ],
-    "homepage": "https://github.com/israrminhas/filament-aimonitor",
+    "homepage": "https://github.com/Israrminhas1/filament-aimonitor",
     "license": "MIT",
     "authors": [
         {
@@ -21,13 +23,15 @@
     ],
     "require": {
         "php": "^8.2",
-        "filament/filament": "^4.0",
-        "illuminate/contracts": "^11.0|^12.0",
+        "filament/filament": "^4.0|^5.0",
+        "illuminate/contracts": "^11.28|^12.0|^13.0",
         "spatie/laravel-package-tools": "^1.16"
     },
     "require-dev": {
-        "orchestra/testbench": "^9.0|^10.0",
-        "pestphp/pest": "^2.0|^3.0"
+        "orchestra/testbench": "^9.0|^10.0|^11.0",
+        "pestphp/pest": "^3.0|^4.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0",
+        "pestphp/pest-plugin-livewire": "^3.0|^4.0"
     },
     "autoload": {
         "psr-4": {
@@ -50,5 +54,14 @@
         }
     },
     "minimum-stability": "dev",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "scripts": {
+        "test": "vendor/bin/pest"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
 }

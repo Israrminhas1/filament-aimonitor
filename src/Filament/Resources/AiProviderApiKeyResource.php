@@ -2,26 +2,34 @@
 
 namespace Filament\AiMonitor\Filament\Resources;
 
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\AiMonitor\Filament\Concerns\HasAiMonitorNavigation;
+use Filament\AiMonitor\Filament\Resources\AiProviderApiKeyResource\Pages;
+use Filament\AiMonitor\Models\AiProviderApiKey;
+use Filament\AiMonitor\Support\Provider;
 use Filament\Forms\Components;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\AiMonitor\Filament\Resources\AiProviderApiKeyResource\Pages;
-use Filament\AiMonitor\Models\AiProviderApiKey;
+use Throwable;
 
 class AiProviderApiKeyResource extends Resource
 {
+    use HasAiMonitorNavigation;
+
     protected static ?string $model = AiProviderApiKey::class;
+
+    protected static bool $isScopedToTenant = false;
+
+    protected static int $aiMonitorNavigationSort = 4;
 
     public static function getNavigationIcon(): ?string
     {
         return 'heroicon-o-key';
-    }
-
-    public static function getNavigationGroup(): ?string
-    {
-        return 'AI Monitor';
     }
 
     public static function getNavigationLabel(): string
@@ -29,22 +37,22 @@ class AiProviderApiKeyResource extends Resource
         return 'API Keys';
     }
 
-    public static function getNavigationSort(): ?int
+    public static function getModelLabel(): string
     {
-        return 4;
+        return 'API key';
     }
 
-    public static function form(Schema $form): Schema
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->components([
                 Components\TextInput::make('provider')
                     ->label('Provider')
                     ->required()
                     ->maxLength(50)
+                    ->datalist(array_keys(Provider::LABELS))
                     ->helperText('e.g. openai, anthropic, gemini, perplexity')
-                    ->afterStateUpdated(fn ($state, callable $set) => $set('provider', strtolower($state)))
-                    ->live(onBlur: true),
+                    ->dehydrateStateUsing(fn (?string $state) => $state === null ? null : strtolower(trim($state))),
 
                 Components\TextInput::make('key_name')
                     ->label('Key Name')
@@ -52,13 +60,19 @@ class AiProviderApiKeyResource extends Resource
                     ->helperText('Optional human-friendly label for this key')
                     ->placeholder('e.g. Production Key, Dev Key'),
 
+                // The stored key is never sent back to the browser. On edit, leave the
+                // field empty to keep the current key.
                 Components\TextInput::make('api_key')
                     ->label('API Key')
                     ->password()
-                    ->revealable(false)
-                    ->required()
-                    ->maxLength(255)
-                    ->helperText('The API key will be encrypted in the database'),
+                    ->revealable()
+                    ->autocomplete('new-password')
+                    ->formatStateUsing(fn () => null)
+                    ->required(fn (string $operation): bool => $operation === 'create')
+                    ->dehydrated(fn (?string $state): bool => filled($state))
+                    ->maxLength(1000)
+                    ->placeholder(fn (string $operation): ?string => $operation === 'edit' ? 'Leave empty to keep the current key' : null)
+                    ->helperText('The API key is encrypted in the database.'),
 
                 Components\TextInput::make('priority')
                     ->label('Priority')
@@ -83,22 +97,18 @@ class AiProviderApiKeyResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'openai' => 'success',
-                        'anthropic' => 'info',
-                        'gemini' => 'warning',
-                        'perplexity' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn (?string $state) => Provider::label($state))
+                    ->color(fn (?string $state): string => Provider::color($state)),
 
                 Tables\Columns\TextColumn::make('key_name')
                     ->label('Key Name')
                     ->searchable()
                     ->placeholder('(Unnamed)'),
 
-                Tables\Columns\TextColumn::make('api_key')
+                Tables\Columns\TextColumn::make('masked_key')
                     ->label('API Key')
-                    ->formatStateUsing(fn () => '••••••••••••••••'),
+                    ->fontFamily('mono')
+                    ->getStateUsing(fn (AiProviderApiKey $record) => static::maskKey($record)),
 
                 Tables\Columns\TextColumn::make('priority')
                     ->numeric()
@@ -110,7 +120,13 @@ class AiProviderApiKeyResource extends Resource
                         default => 'gray',
                     }),
 
-                Tables\Columns\IconColumn::make('active')->boolean()->sortable(),
+                Tables\Columns\ToggleColumn::make('active')->sortable(),
+
+                Tables\Columns\TextColumn::make('updated_at')
+                    ->label('Updated')
+                    ->since()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\TernaryFilter::make('active')
@@ -119,16 +135,30 @@ class AiProviderApiKeyResource extends Resource
                     ->trueLabel('Active only')
                     ->falseLabel('Inactive only'),
             ])
-            ->actions([
-                \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make(),
+            ->recordActions([
+                EditAction::make(),
+                DeleteAction::make(),
             ])
-            ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ])
             ->defaultSort('priority');
+    }
+
+    /**
+     * Show only the last four characters of a key, e.g. "••••••••3xYz".
+     */
+    public static function maskKey(AiProviderApiKey $record): string
+    {
+        try {
+            $key = (string) $record->api_key;
+        } catch (Throwable) {
+            return 'Unable to decrypt';
+        }
+
+        return str_repeat('•', 8) . (strlen($key) > 8 ? substr($key, -4) : '');
     }
 
     public static function getRelations(): array

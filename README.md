@@ -1,21 +1,23 @@
 # Filament AI Monitor
 
-A Filament 4 plugin for monitoring AI API usage, costs, and managing API keys across multiple providers (OpenAI, Anthropic, Gemini, Perplexity).
+A Filament plugin (v4 and v5) for monitoring AI API usage, costs, and managing API keys across multiple providers (OpenAI, Anthropic, Gemini, Perplexity).
 
 ## Features
 
 - Track AI API requests with token counts and automatic cost calculation
-- Manage API keys for multiple providers with priority-based rotation
-- Configure model-specific pricing with fallback support
-- Dashboard with usage analytics and cost trends
+- Manage encrypted API keys for multiple providers with priority-based rotation
+- Configure model-specific pricing with provider defaults, a global fallback, and automatic matching of dated model snapshots (`gpt-4o-2024-08-06` → `gpt-4o`)
+- Dashboard with period (7 / 30 / 90 / 365 days) and provider filters, usage analytics, and cost trends
+- Recalculate costs for past requests after adding or changing pricing
 - Per-user spending tracking and limits
-- Multi-tenancy support (works with `tenant()` helper)
+- Multi-tenancy support (`tenant()` helper, Filament tenancy, or a custom resolver)
+- `AiRequestLogged` event for alerts, budgets, and integrations
 
 ## Requirements
 
 - PHP 8.2+
-- Laravel 11+
-- Filament 4.0+
+- Laravel 11.28+ (tested up to Laravel 13)
+- Filament 4.x (Livewire 3) or Filament 5.x (Livewire 4)
 
 ## Installation
 
@@ -36,6 +38,19 @@ Publish config (optional):
 php artisan vendor:publish --tag="ai-monitor-config"
 ```
 
+Import current list prices for popular OpenAI, Anthropic, Gemini and Perplexity models (optional):
+
+```bash
+php artisan ai-monitor:setup-pricing          # skips models you already priced
+php artisan ai-monitor:setup-pricing --force  # overwrite with the bundled prices
+```
+
+> Provider prices change often. Check the imported values against each provider's pricing page.
+
+### Upgrading from the Filament 4 version
+
+No database changes are needed. Update the package, then run `php artisan filament:upgrade`. If you had published the package's views, delete `resources/views/vendor/ai-monitor` and publish them again, since `ai-monitor-dashboard.blade.php`, `ai-top-models-widget.blade.php` and `ai-user-usage-widget.blade.php` were removed.
+
 ## Register the Plugin
 
 Add the plugin to your Filament panel in `app/Providers/Filament/AdminPanelProvider.php`:
@@ -51,6 +66,24 @@ public function panel(Panel $panel): Panel
         ]);
 }
 ```
+
+The plugin works on any panel ID and path; links are generated for the panel it is registered on.
+
+### Plugin Options
+
+```php
+AiMonitorPlugin::make()
+    ->navigationGroup('Observability') // null to ungroup; defaults to config('ai-monitor.navigation_group')
+    ->navigationSort(10)               // offset added to the sort of every AI Monitor nav item
+    ->dashboard()                      // pass false to hide any of these
+    ->requestsResource()
+    ->pricingResource()
+    ->apiKeysResource();
+```
+
+### Styling
+
+The plugin uses only Filament's built-in components and classes, so no custom theme or Tailwind `@source` entry is required.
 
 ---
 
@@ -152,7 +185,7 @@ $rates = $pricing->getPricing('openai', 'gpt-4o');
 // Returns: ['input_per_1k' => 0.005, 'output_per_1k' => 0.015]
 
 // Check if pricing exists
-if ($pricing->hasPricing('anthropic', 'claude-3-opus')) {
+if ($pricing->hasPricing('anthropic', 'claude-sonnet-5')) {
     // ...
 }
 
@@ -304,41 +337,104 @@ if ($status['state'] === 'warning') {
 
 ---
 
-## Multi-Tenancy Support
+## Pricing Resolution
 
-The package automatically scopes data to the current tenant when `tenant()` helper is available (e.g., with Filament multi-tenancy or Stancl/Tenancy).
+When a request is logged, its cost is calculated from the first match below:
 
-### Configuration
+1. **Exact model**: a row whose model equals the request's model (case-insensitive).
+2. **Snapshot of a priced model**: `gpt-4o-2024-08-06`, `claude-sonnet-4-6-20260101`, `claude-3-5-sonnet-latest`, `gemini-2.5-pro-preview-05-06` and `model@20241022` use the row for the base model. A different model that just shares a prefix (`gpt-4o-mini` vs `gpt-4o`) does **not** match.
+3. **Provider default**: the provider's row with *Provider default* enabled.
+4. **Global fallback**: the row with *Global fallback* enabled.
 
-```php
-// config/ai-monitor.php
-return [
-    'tenant_support' => true, // Enable/disable tenant scoping
-];
+If nothing matches, the request is stored with `cost_usd = null` and flagged on the dashboard.
+
+### Recalculating Costs
+
+Added or changed pricing after requests were logged? Recalculate them:
+
+- **From the panel**: *AI Requests → Recalculate missing costs*, or select requests and use the *Recalculate cost* bulk action.
+- **From the CLI**:
+
+```bash
+php artisan ai-monitor:recalculate-costs                       # only requests missing a cost
+php artisan ai-monitor:recalculate-costs --all --since=2026-01-01
+php artisan ai-monitor:recalculate-costs --all --include-manual  # also overwrite manually logged costs
 ```
-
-### How It Works
-
-- All models use the `IsTenantScoped` trait
-- When `tenant()` returns a tenant, `tenant_id` is automatically set on create
-- Queries are automatically scoped to the current tenant
 
 ---
 
+## Events
 
+Every call to `ai_log()` / `AiUsageLogger::log()` dispatches `Filament\AiMonitor\Events\AiRequestLogged`, which you can use for budget alerts, Slack notifications, and so on:
 
-## Dashboard Widgets
+```php
+use Filament\AiMonitor\Events\AiRequestLogged;
+use Filament\AiMonitor\Services\AiUsageLimitService;
+use Illuminate\Support\Facades\Event;
 
-The plugin includes these dashboard widgets:
+Event::listen(function (AiRequestLogged $event) {
+    if ($user = $event->request->user) {
+        $status = app(AiUsageLimitService::class)->getUserLimitStatus($user);
+
+        if ($status['state'] === 'over') {
+            // notify...
+        }
+    }
+});
+```
+
+---
+
+## Multi-Tenancy Support
+
+When `tenant_support` is enabled, every AI Monitor model is scoped to the current tenant, and `tenant_id` is filled automatically on create. The current tenant is resolved from, in order:
+
+1. A custom resolver, if you register one.
+2. The global `tenant()` helper (e.g. [stancl/tenancy](https://tenancyforlaravel.com)).
+3. The current Filament panel tenant (`Filament::getTenant()`).
+
+```php
+// config/ai-monitor.php
+'tenant_support' => true,
+```
+
+```php
+// AppServiceProvider::boot()
+use Filament\AiMonitor\Support\Tenancy;
+
+Tenancy::resolveUsing(fn () => auth()->user()?->team_id);
+```
+
+The plugin's resources set `$isScopedToTenant = false`, so they work on Filament panels with tenancy without needing an ownership relationship on the plugin's models.
+
+---
+
+## Dashboard
+
+The dashboard (`/{panel}/aimonitor`) has a **period** filter (7 days, 30 days, 90 days, 12 months) and a **provider** filter that apply to every widget. The filters are kept in the URL and session.
 
 | Widget | Description |
 |--------|-------------|
-| Stats Overview | Total requests, tokens, cost, success rate |
-| Cost & Request Trends | 30-day line chart |
+| Setup Alert | Shown when pricing or API keys are missing, or requests have no cost |
+| Stats Overview | Requests, cost, tokens and success rate, with change vs the previous period |
+| Cost & Request Trends | Daily cost and request line chart |
 | Cost by Provider | Doughnut chart breakdown |
-| Top Models by Cost | Table of most expensive models |
-| Usage by User | Table of user spending |
-| Recent Requests | Latest API calls with details |
+| Top Models by Cost | Five most expensive models |
+| Usage by User | Five highest-spending users |
+| Recent Requests | Latest calls, linking to the request detail page |
+
+The widgets also work on your own dashboards; without page filters they show the last 30 days.
+
+---
+
+## Testing
+
+```bash
+composer install
+composer test
+```
+
+The test suite runs against whichever Filament version is installed. CI runs it on Filament 4 and 5.
 
 ---
 

@@ -1,34 +1,50 @@
 <x-filament-widgets::widget>
-    @if(!$hasPricing || !$hasApiKeys)
-        <x-filament::section>
-            <div class="flex items-center gap-3">
-                <span class="text-warning-500 text-xl">⚠</span>
-                <div class="flex-1">
-                    <h3 class="text-base font-semibold text-warning-600 dark:text-warning-400">Setup Required</h3>
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
-                        @if(!$hasPricing)
-                            <a href="{{ route('filament.admin.resources.ai-model-pricings.create') }}" class="underline font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500">Add model pricing</a>
-                        @endif
-                        @if(!$hasPricing && !$hasApiKeys) and @endif
-                        @if(!$hasApiKeys)
-                            <a href="{{ route('filament.admin.resources.ai-provider-api-keys.create') }}" class="underline font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500">add API keys</a>
-                        @endif
-                        to start tracking costs.
-                    </p>
-                </div>
+    @if (! $hasPricing || ! $hasApiKeys)
+        <x-filament::section icon="heroicon-o-exclamation-triangle" icon-color="warning">
+            <x-slot name="heading">Setup required</x-slot>
+
+            <x-slot name="description">
+                @if (! $hasPricing && ! $hasApiKeys)
+                    Add model pricing and an API key to start tracking costs.
+                @elseif (! $hasPricing)
+                    Add model pricing so request costs can be calculated.
+                    Tip: run <code>php artisan ai-monitor:setup-pricing</code> to import current prices.
+                @else
+                    Add an API key so <code>ai_key()</code> can hand keys to your app.
+                @endif
+            </x-slot>
+
+            <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+                @if (! $hasPricing && $createPricingUrl)
+                    <x-filament::button tag="a" :href="$createPricingUrl" icon="heroicon-o-currency-dollar">
+                        Add model pricing
+                    </x-filament::button>
+                @endif
+
+                @if (! $hasApiKeys && $createApiKeyUrl)
+                    <x-filament::button tag="a" :href="$createApiKeyUrl" icon="heroicon-o-key" color="gray">
+                        Add API key
+                    </x-filament::button>
+                @endif
             </div>
         </x-filament::section>
-    @elseif($requestsMissingPricing > 0)
-        <x-filament::section>
-            <div class="flex items-center gap-3">
-                <span class="text-warning-500 text-lg">ℹ</span>
-                <div class="flex-1">
-                    <p class="text-sm text-gray-600 dark:text-gray-400">
-                        <strong class="text-gray-900 dark:text-white">{{ number_format($requestsMissingPricing) }}</strong> requests are missing pricing data.
-                        <a href="{{ route('filament.admin.resources.ai-model-pricings.index') }}" class="underline font-medium text-primary-600 dark:text-primary-400 hover:text-primary-500">Configure pricing</a>
-                    </p>
-                </div>
-            </div>
+    @elseif ($requestsMissingPricing > 0)
+        <x-filament::section icon="heroicon-o-information-circle" icon-color="warning" compact>
+            <x-slot name="heading">
+                {{ number_format($requestsMissingPricing) }} {{ \Illuminate\Support\Str::plural('request', $requestsMissingPricing) }} missing pricing
+            </x-slot>
+
+            <x-slot name="description">
+                These requests used a model with no matching price. Add pricing, then recalculate their cost.
+            </x-slot>
+
+            @if ($missingPricingUrl)
+                <x-slot name="afterHeader">
+                    <x-filament::button tag="a" :href="$missingPricingUrl" size="sm" color="gray">
+                        Review requests
+                    </x-filament::button>
+                </x-slot>
+            @endif
         </x-filament::section>
     @endif
 </x-filament-widgets::widget>

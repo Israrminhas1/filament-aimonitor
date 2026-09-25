@@ -7,23 +7,23 @@ use Filament\AiMonitor\Models\AiRequest;
 
 class AiUsageLimitService
 {
-    public function getUserMonthlySpend(int $userId, ?Carbon $month = null): float
+    public function getUserMonthlySpend(int | string $userId, ?Carbon $month = null): float
     {
         $month = $month ?? now();
 
         $startOfMonth = $month->copy()->startOfMonth();
         $endOfMonth = $month->copy()->endOfMonth();
 
-        return AiRequest::query()
+        return (float) AiRequest::query()
             ->where('user_id', $userId)
             ->whereBetween('occurred_at', [$startOfMonth, $endOfMonth])
-            ->sum('cost_usd') ?? 0.0;
+            ->sum('cost_usd');
     }
 
     public function getUserLimitStatus($user): array
     {
         $limit = $user->ai_monthly_limit_usd ?? null;
-        $spent = $this->getUserMonthlySpend($user->id);
+        $spent = $this->getUserMonthlySpend($user->getKey());
 
         if ($limit === null || $limit <= 0) {
             return [
