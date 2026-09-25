@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.0.0 - 2026-09-26
 
 ### Added
 - Filament 5 support (Livewire 4, Laravel 13). Filament 4 is still supported.
