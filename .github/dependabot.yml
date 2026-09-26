@@ -1,0 +1,21 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+    # A library: only widen constraints when a new major is out, never narrow them.
+    versioning-strategy: widen
+    cooldown:
+      default-days: 7
