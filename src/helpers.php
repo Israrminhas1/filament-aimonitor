@@ -19,8 +19,21 @@ if (!function_exists('ai_log')) {
 }
 
 if (!function_exists('ai_cost')) {
-    function ai_cost(string $provider, ?string $model, ?int $promptTokens, ?int $completionTokens): ?float
-    {
-        return app(AiPricingService::class)->calculateCost($provider, $model, $promptTokens, $completionTokens);
+    function ai_cost(
+        string $provider,
+        ?string $model,
+        ?int $promptTokens,
+        ?int $completionTokens,
+        int $cacheReadTokens = 0,
+        int $cacheWriteTokens = 0,
+    ): ?float {
+        return app(AiPricingService::class)->calculateCost(
+            $provider,
+            $model,
+            $promptTokens,
+            $completionTokens,
+            $cacheReadTokens,
+            $cacheWriteTokens,
+        );
     }
 }

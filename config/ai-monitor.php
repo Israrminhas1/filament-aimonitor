@@ -45,4 +45,28 @@ return [
     |
     */
     'tenant_support' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Prompt Cache Pricing
+    |--------------------------------------------------------------------------
+    |
+    | Some providers bill prompt-cache tokens separately and report them as
+    | their own counters, outside the prompt tokens. Log them in the request
+    | meta as `cache_read_tokens` and `cache_write_tokens`: each costs the
+    | model's input price times the multiplier below. Anthropic, and Claude
+    | on Amazon Bedrock, charge 0.1x for cache reads and 1.25x for cache
+    | writes with the default 5-minute TTL (2.0x with the 1-hour TTL).
+    |
+    | Providers without an entry do not price cache tokens. OpenAI, Gemini
+    | and others include cached tokens in the prompt tokens and discount
+    | them at model-specific rates, so one factor per provider would be
+    | wrong for them. Add an entry for any provider that bills cache tokens
+    | on top of the prompt tokens.
+    |
+    */
+    'cache_multipliers' => [
+        'anthropic' => ['read' => 0.1, 'write' => 1.25],
+        'bedrock' => ['read' => 0.1, 'write' => 1.25],
+    ],
 ];

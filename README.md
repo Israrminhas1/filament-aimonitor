@@ -4,7 +4,7 @@ A Filament plugin (v4 and v5) for monitoring AI API usage, costs, and managing A
 
 ## Features
 
-- Track AI API requests with token counts and automatic cost calculation
+- Track AI API requests with token counts and automatic cost calculation, including prompt-cache reads and writes
 - Manage encrypted API keys for multiple providers with priority-based rotation
 - Configure model-specific pricing with provider defaults, a global fallback, and automatic matching of dated model snapshots (`gpt-4o-2024-08-06` → `gpt-4o`)
 - Dashboard with period (7 / 30 / 90 / 365 days) and provider filters, usage analytics, and cost trends
@@ -123,6 +123,9 @@ $apiKey = ai_key('gemini');
 // Calculate cost for tokens without logging
 $cost = ai_cost('openai', 'gpt-4o', 1000, 500);
 // Returns cost in USD based on your pricing config
+
+// With prompt-cache reads and writes (see Prompt Caching)
+$cost = ai_cost('anthropic', 'claude-sonnet-5', 2013, 134, cacheReadTokens: 0, cacheWriteTokens: 22568);
 ```
 
 ---
@@ -271,8 +274,14 @@ ai_log([
     'completion_tokens' => $data['usage']['output_tokens'],
     'status' => $response->successful() ? 'success' : 'failed',
     'user_id' => auth()->id(),
+    'meta' => [
+        'cache_read_tokens' => $data['usage']['cache_read_input_tokens'] ?? 0,
+        'cache_write_tokens' => $data['usage']['cache_creation_input_tokens'] ?? 0,
+    ],
 ]);
 ```
+
+Anthropic's `input_tokens` already excludes cache reads and writes, so it can be logged as `prompt_tokens` directly. See [Prompt Caching](#prompt-caching).
 
 ### With Error Handling
 
@@ -347,6 +356,39 @@ When a request is logged, its cost is calculated from the first match below:
 4. **Global fallback**: the row with *Global fallback* enabled.
 
 If nothing matches, the request is stored with `cost_usd = null` and flagged on the dashboard.
+
+### Prompt Caching
+
+Anthropic, and Claude on Amazon Bedrock, bill prompt-cache tokens separately from regular input: a cache read costs 0.1× and a cache write 1.25× the model's input price (5-minute TTL). They are reported as their own counters, not as part of the input tokens. Log them in `meta` and they are priced with the rest of the request:
+
+```php
+ai_log([
+    'provider' => 'anthropic',
+    'model' => 'claude-sonnet-5',
+    'prompt_tokens' => 2013,        // uncached input only
+    'completion_tokens' => 134,
+    'meta' => [
+        'cache_read_tokens' => 0,
+        'cache_write_tokens' => 22568,
+    ],
+]);
+```
+
+> [!IMPORTANT]
+> When you pass cache tokens, `prompt_tokens` must be the **uncached** input only, otherwise cached tokens are charged twice. Anthropic's `input_tokens` already excludes them. Some SDKs report a total instead: in [laravel/ai](https://github.com/laravel/ai) 1.0, `$usage->inputTokens` includes cache reads and writes, so log `$usage->uncachedInputTokens()` as `prompt_tokens`, and `$usage->cacheReadInputTokens` / `$usage->cacheWriteInputTokens` as `cache_read_tokens` / `cache_write_tokens`.
+
+The multipliers are set per provider in `config/ai-monitor.php` and apply to the input price of the matched pricing row:
+
+```php
+'cache_multipliers' => [
+    'anthropic' => ['read' => 0.1, 'write' => 1.25],
+    'bedrock' => ['read' => 0.1, 'write' => 1.25],
+],
+```
+
+Providers without an entry do not price cache tokens. OpenAI, Gemini and others include cached tokens in the prompt tokens and discount them at model-specific rates, so a single factor per provider would be wrong for them; log their prompt tokens as usual. If a provider bills cache tokens on top of the prompt tokens, add an entry for it. If you use Anthropic's 1-hour cache TTL, cache writes cost 2× the input price: set `'write' => 2.0`.
+
+Cost recalculation (below) uses the same `meta` counters.
 
 ### Recalculating Costs
 

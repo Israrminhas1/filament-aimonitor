@@ -105,11 +105,17 @@ class AiPricingService
         return (bool) preg_match('/^(-\d{4}|-latest|-preview|-exp|@)/', substr($model, strlen($base)));
     }
 
+    /**
+     * `$promptTokens` is the uncached input only. Prompt-cache reads and writes are passed
+     * separately and cost the model's input price times the provider's cache multiplier.
+     */
     public function calculateCost(
         string $provider,
         ?string $model,
         ?int $promptTokens,
-        ?int $completionTokens
+        ?int $completionTokens,
+        int $cacheReadTokens = 0,
+        int $cacheWriteTokens = 0,
     ): ?float {
         $pricing = $this->getPricing($provider, $model);
 
@@ -117,10 +123,27 @@ class AiPricingService
             return null;
         }
 
-        $inputCost = (($promptTokens ?? 0) / 1000) * $pricing['input_per_1k'];
+        $inputCost = (($promptTokens ?? 0) / 1000) * $pricing['input_per_1k']
+            + $this->cacheCost($provider, $pricing['input_per_1k'], $cacheReadTokens, $cacheWriteTokens);
         $outputCost = (($completionTokens ?? 0) / 1000) * $pricing['output_per_1k'];
 
         return round($inputCost + $outputCost, 6);
+    }
+
+    /**
+     * Cost of prompt-cache reads and writes, using the provider's entry in
+     * `ai-monitor.cache_multipliers`. Providers without an entry do not price them.
+     */
+    protected function cacheCost(string $provider, float $inputPer1k, int $cacheReadTokens, int $cacheWriteTokens): float
+    {
+        $multipliers = config('ai-monitor.cache_multipliers', [])[strtolower($provider)] ?? null;
+
+        if (! is_array($multipliers)) {
+            return 0.0;
+        }
+
+        return ($cacheReadTokens / 1000) * $inputPer1k * (float) ($multipliers['read'] ?? 0)
+            + ($cacheWriteTokens / 1000) * $inputPer1k * (float) ($multipliers['write'] ?? 0);
     }
 
     /**
@@ -140,6 +163,8 @@ class AiPricingService
             $request->model,
             $request->prompt_tokens,
             $request->completion_tokens,
+            (int) ($meta['cache_read_tokens'] ?? 0),
+            (int) ($meta['cache_write_tokens'] ?? 0),
         );
 
         if ($cost === null) {
