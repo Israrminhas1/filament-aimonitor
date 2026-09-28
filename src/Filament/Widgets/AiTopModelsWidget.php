@@ -9,6 +9,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Number;
 
 class AiTopModelsWidget extends BaseWidget
 {
@@ -57,7 +58,9 @@ class AiTopModelsWidget extends BaseWidget
                     ->alignEnd(),
                 Tables\Columns\TextColumn::make('tokens_sum')
                     ->label('Tokens')
-                    ->numeric()
+                    // Short form (16.0M), like the stats above, so the cost column fits beside it.
+                    ->formatStateUsing(fn ($state): string => Number::abbreviate((int) $state, maxPrecision: 1))
+                    ->tooltip(fn ($record): string => Number::format((int) $record->tokens_sum))
                     ->alignEnd(),
                 Tables\Columns\TextColumn::make('total_cost')
                     ->label('Cost')

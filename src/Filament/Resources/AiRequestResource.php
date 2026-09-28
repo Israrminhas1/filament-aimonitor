@@ -72,8 +72,7 @@ class AiRequestResource extends Resource
 
                 Tables\Columns\TextColumn::make('model')
                     ->searchable()
-                    ->sortable()
-                    ->wrap(),
+                    ->sortable(),
 
                 Tables\Columns\TextColumn::make('request_type')
                     ->label('Type')
@@ -87,14 +86,15 @@ class AiRequestResource extends Resource
                     ->numeric()
                     ->sortable()
                     ->alignEnd()
-                    ->toggleable(),
+                    // Hidden by default so the table fits; Total covers both.
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('completion_tokens')
                     ->label('Completion')
                     ->numeric()
                     ->sortable()
                     ->alignEnd()
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 Tables\Columns\TextColumn::make('total_tokens')
                     ->label('Total')
