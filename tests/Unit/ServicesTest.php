@@ -132,6 +132,68 @@ describe('logging', function () {
     });
 });
 
+describe('prompt caching', function () {
+    it('prices cache writes on top of the uncached input', function () {
+        price('anthropic', 'claude-sonnet-5', 0.002, 0.01);
+
+        // 2,013 uncached input, 22,568 cache-write and 134 output tokens at $2 / $10 per 1M:
+        // 2,013 x $2 + 22,568 x $2 x 1.25 + 134 x $10 = $61,786 per 1M = $0.061786.
+        expect(ai_cost('anthropic', 'claude-sonnet-5', 2013, 134, cacheWriteTokens: 22568))->toBe(0.061786)
+            ->and(ai_cost('anthropic', 'claude-sonnet-5', 2013, 134))->toBe(0.005366);
+    });
+
+    it('prices cache reads and writes at the provider multipliers', function (string $provider) {
+        price($provider, 'claude-sonnet-5', 0.002, 0.01);
+        $pricing = app(AiPricingService::class);
+
+        expect($pricing->calculateCost($provider, 'claude-sonnet-5', 0, 0, cacheReadTokens: 1_000_000))->toBe(0.2)
+            ->and($pricing->calculateCost($provider, 'claude-sonnet-5', 0, 0, cacheWriteTokens: 1_000_000))->toBe(2.5);
+    })->with(['anthropic', 'bedrock']);
+
+    it('ignores cache tokens for providers without a multiplier', function () {
+        price('openai', 'gpt-4o', 0.0025, 0.01);
+
+        expect(ai_cost('openai', 'gpt-4o', 1000, 500, 5000, 5000))->toBe(0.0075);
+    });
+
+    it('uses multipliers added in the config', function () {
+        price('openai', 'gpt-4o', 0.0025, 0.01);
+        config(['ai-monitor.cache_multipliers.openai' => ['read' => 0.5]]);
+
+        expect(ai_cost('openai', 'gpt-4o', 0, 0, cacheReadTokens: 1000, cacheWriteTokens: 1000))->toBe(0.00125);
+    });
+
+    it('reads the cache tokens from the logged meta', function () {
+        price('anthropic', 'claude-sonnet-5', 0.002, 0.01);
+
+        $request = ai_log([
+            'provider' => 'anthropic',
+            'model' => 'claude-sonnet-5',
+            'prompt_tokens' => 2013,
+            'completion_tokens' => 134,
+            'meta' => ['cache_read_tokens' => 0, 'cache_write_tokens' => 22568],
+        ]);
+
+        expect((float) $request->cost_usd)->toBe(0.061786)
+            ->and($request->meta)->toMatchArray(['cache_write_tokens' => 22568, 'cost_source' => 'auto']);
+    });
+
+    it('includes the cache tokens when recalculating', function () {
+        $request = ai_log([
+            'provider' => 'anthropic',
+            'model' => 'claude-sonnet-5',
+            'prompt_tokens' => 2013,
+            'completion_tokens' => 134,
+            'meta' => ['cache_write_tokens' => 22568],
+        ]);
+
+        price('anthropic', 'claude-sonnet-5', 0.002, 0.01);
+        $this->artisan('ai-monitor:recalculate-costs')->assertSuccessful();
+
+        expect((float) $request->fresh()->cost_usd)->toBe(0.061786);
+    });
+});
+
 describe('keys', function () {
     it('returns the highest priority active key, encrypted at rest', function () {
         AiProviderApiKey::create(['provider' => 'openai', 'api_key' => 'sk-low', 'priority' => 5, 'active' => true]);

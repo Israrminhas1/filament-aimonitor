@@ -33,6 +33,8 @@ class AiUsageLogger
                 $data['model'] ?? null,
                 $data['prompt_tokens'] ?? 0,
                 $data['completion_tokens'] ?? 0,
+                (int) ($data['meta']['cache_read_tokens'] ?? 0),
+                (int) ($data['meta']['cache_write_tokens'] ?? 0),
             );
 
             if ($calculatedCost === null) {
