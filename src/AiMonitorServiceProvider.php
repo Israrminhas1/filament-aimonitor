@@ -22,6 +22,7 @@ class AiMonitorServiceProvider extends PackageServiceProvider
                 'create_ai_requests_table',
                 'create_ai_model_pricings_table',
                 'create_ai_provider_api_keys_table',
+                'add_pricing_unit_to_ai_model_pricings_table',
             ])
             ->hasCommands([
                 SeedPricingCommand::class,

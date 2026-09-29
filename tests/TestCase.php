@@ -67,7 +67,7 @@ abstract class TestCase extends Orchestra
             $table->timestamps();
         });
 
-        foreach (['create_ai_requests_table', 'create_ai_model_pricings_table', 'create_ai_provider_api_keys_table'] as $migration) {
+        foreach (['create_ai_requests_table', 'create_ai_model_pricings_table', 'create_ai_provider_api_keys_table', 'add_pricing_unit_to_ai_model_pricings_table'] as $migration) {
             (include __DIR__ . "/../database/migrations/{$migration}.php.stub")->up();
         }
     }

@@ -15,6 +15,7 @@ class AiModelPricing extends Model
         'model',
         'input_per_1k',
         'output_per_1k',
+        'pricing_unit',
         'is_default',
         'is_fallback',
         'active',
