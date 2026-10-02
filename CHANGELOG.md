@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.0 - 2026-10-02
+
+**Upgrading:** publish and run the new migration (it adds a `pricing_unit` column to `ai_model_pricings`):
+
+```bash
+php artisan vendor:publish --tag="ai-monitor-migrations"
+php artisan migrate
+```
+
+Until it runs, existing prices keep working as per-token prices, but saving a price in the panel fails.
+
+### Added
+- Prompt-cache pricing: log `cache_read_tokens` and `cache_write_tokens` in the request `meta` and they are priced at the provider's cache multipliers (Anthropic and Bedrock: 0.1x reads, 1.25x writes; new `cache_multipliers` config). Thanks @ppra.
+- Prices per image, second or request, for image, video and audio models (new *Pricing unit* field). Thanks @ppra.
+
+### Changed
+- `AiPricingService::calculateCost()` and `ai_cost()` take two optional parameters, `$cacheReadTokens` and `$cacheWriteTokens`. Code that extends `AiPricingService` and overrides `calculateCost()` must add them.
+- Dashboard token columns show short numbers (16M) so the cost column fits; the exact count is in the tooltip.
+- The requests table hides the Prompt and Completion columns by default (Total covers both); turn them on from the column menu.
+
 ## v1.0.0 - 2026-09-26
 
 ### Added
