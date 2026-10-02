@@ -7,6 +7,7 @@ A Filament plugin (v4 and v5) for monitoring AI API usage, costs, and managing A
 - Track AI API requests with token counts and automatic cost calculation, including prompt-cache reads and writes
 - Manage encrypted API keys for multiple providers with priority-based rotation
 - Configure model-specific pricing with provider defaults, a global fallback, and automatic matching of dated model snapshots (`gpt-4o-2024-08-06` → `gpt-4o`)
+- Price image, video and other non-token models per image, second or request
 - Dashboard with period (7 / 30 / 90 / 365 days) and provider filters, usage analytics, and cost trends
 - Recalculate costs for past requests after adding or changing pricing
 - Per-user spending tracking and limits
@@ -46,6 +47,17 @@ php artisan ai-monitor:setup-pricing --force  # overwrite with the bundled price
 ```
 
 > Provider prices change often. Check the imported values against each provider's pricing page.
+
+### Upgrading from v1.0
+
+Pricing rows can now be priced per image, second or request (see [Per-Unit Pricing](#per-unit-pricing)), which adds a `pricing_unit` column to `ai_model_pricings`. Publish the new migration and run it:
+
+```bash
+php artisan vendor:publish --tag="ai-monitor-migrations"
+php artisan migrate
+```
+
+Migrations you already published are skipped. Existing rows get the unit `tokens`, so their costs do not change.
 
 ### Upgrading from the Filament 4 version
 
@@ -185,7 +197,7 @@ $pricing = app(AiPricingService::class);
 
 // Get pricing for a model
 $rates = $pricing->getPricing('openai', 'gpt-4o');
-// Returns: ['input_per_1k' => 0.005, 'output_per_1k' => 0.015]
+// Returns: ['input_per_1k' => 0.005, 'output_per_1k' => 0.015, 'pricing_unit' => 'tokens']
 
 // Check if pricing exists
 if ($pricing->hasPricing('anthropic', 'claude-sonnet-5')) {
@@ -389,6 +401,33 @@ The multipliers are set per provider in `config/ai-monitor.php` and apply to the
 Providers without an entry do not price cache tokens. OpenAI, Gemini and others include cached tokens in the prompt tokens and discount them at model-specific rates, so a single factor per provider would be wrong for them; log their prompt tokens as usual. If a provider bills cache tokens on top of the prompt tokens, add an entry for it. If you use Anthropic's 1-hour cache TTL, cache writes cost 2× the input price: set `'write' => 2.0`.
 
 Cost recalculation (below) uses the same `meta` counters.
+
+### Per-Unit Pricing
+
+Not every model is billed by the token: image models often cost a fixed amount per generated image, video and audio models per second, and some APIs per request. Set **Pricing unit** on the pricing row to *Images*, *Seconds* or *Requests*. Its input and output prices are then per unit instead of per 1K tokens, and you log the number of units in `prompt_tokens` and `completion_tokens`:
+
+```php
+// Pricing row: unit "Images", input 0, output 0.04
+ai_log([
+    'provider' => 'google',
+    'model' => 'imagen-4',
+    'request_type' => 'image',
+    'prompt_tokens' => 0,       // input units
+    'completion_tokens' => 2,   // output units: two images
+]);
+// cost_usd: 0.08
+
+// Pricing row: unit "Seconds", input 0, output 0.40
+ai_log([
+    'provider' => 'google',
+    'model' => 'veo-3',
+    'request_type' => 'video',
+    'completion_tokens' => 8,   // an 8-second clip
+]);
+// cost_usd: 3.20
+```
+
+Cache tokens are not priced on these rows. The counts are stored in the token columns, so they also appear in the token totals on the dashboard. The price columns keep their names `input_per_1k` and `output_per_1k`.
 
 ### Recalculating Costs
 

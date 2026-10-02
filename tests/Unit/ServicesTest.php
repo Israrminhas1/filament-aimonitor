@@ -8,6 +8,7 @@ use Filament\AiMonitor\Services\AiKeyManager;
 use Filament\AiMonitor\Services\AiPricingService;
 use Filament\AiMonitor\Services\AiUsageLimitService;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schema;
 
 function price(string $provider, ?string $model, float $in, float $out, array $extra = []): AiModelPricing
 {
@@ -26,7 +27,7 @@ describe('pricing', function () {
         price('openai', 'gpt-4o-mini', 0.00015, 0.0006);
 
         expect(app(AiPricingService::class)->getPricing('openai', 'gpt-4o-mini'))
-            ->toBe(['input_per_1k' => 0.00015, 'output_per_1k' => 0.0006]);
+            ->toBe(['input_per_1k' => 0.00015, 'output_per_1k' => 0.0006, 'pricing_unit' => 'tokens']);
     });
 
     it('matches dated and tagged snapshots of a priced model', function () {
@@ -191,6 +192,38 @@ describe('prompt caching', function () {
         $this->artisan('ai-monitor:recalculate-costs')->assertSuccessful();
 
         expect((float) $request->fresh()->cost_usd)->toBe(0.061786);
+    });
+});
+
+describe('per-unit pricing', function () {
+    it('charges input and output units at the row price instead of per 1K tokens', function (string $unit) {
+        price('google', 'media-model', 0.01, 0.04, ['pricing_unit' => $unit]);
+
+        // 2 input units x $0.01 + 3 output units x $0.04. Priced as tokens, the same counts would cost $0.00014.
+        expect(ai_cost('google', 'media-model', 2, 3))->toBe(0.14)
+            ->and(app(AiPricingService::class)->getPricing('google', 'media-model')['pricing_unit'])->toBe($unit);
+    })->with(['images', 'seconds', 'requests']);
+
+    it('does not price cache tokens on rows priced per unit', function () {
+        price('bedrock', 'image-model', 0.0, 0.04, ['pricing_unit' => 'images']);
+
+        expect(ai_cost('bedrock', 'image-model', 0, 1, cacheReadTokens: 10_000, cacheWriteTokens: 10_000))->toBe(0.04);
+    });
+
+    it('logs the cost of a request priced per unit', function () {
+        price('google', 'video-model', 0.0, 0.4, ['pricing_unit' => 'seconds']);
+
+        $request = ai_log(['provider' => 'google', 'model' => 'video-model', 'prompt_tokens' => 0, 'completion_tokens' => 8]);
+
+        expect((float) $request->cost_usd)->toBe(3.2)
+            ->and($request->meta['cost_source'])->toBe('auto');
+    });
+
+    it('skips the migration when the column already exists', function () {
+        // TestCase already ran it once, so this is the install that added the column itself.
+        (include __DIR__ . '/../../database/migrations/add_pricing_unit_to_ai_model_pricings_table.php.stub')->up();
+
+        expect(Schema::hasColumn('ai_model_pricings', 'pricing_unit'))->toBeTrue();
     });
 });
 

@@ -173,7 +173,26 @@ describe('pricing resource', function () {
 
         expect(AiModelPricing::first())
             ->provider->toBe('openai')
-            ->model->toBe('gpt-5');
+            ->model->toBe('gpt-5')
+            ->pricing_unit->toBe('tokens');
+    });
+
+    it('creates pricing per image', function () {
+        livewire(CreateAiModelPricing::class)
+            ->fillForm([
+                'provider' => 'google',
+                'model' => 'image-model',
+                'pricing_unit' => 'images',
+                'input_per_1k' => 0,
+                'output_per_1k' => 0.04,
+            ])
+            ->assertSee('Output / image (USD)')
+            ->call('create')
+            ->assertHasNoFormErrors();
+
+        expect(AiModelPricing::first())
+            ->pricing_unit->toBe('images')
+            ->output_per_1k->toBe(0.04);
     });
 
     it('lists pricing', function () {
@@ -181,7 +200,17 @@ describe('pricing resource', function () {
 
         livewire(ListAiModelPricings::class)
             ->assertCanSeeTableRecords([$row])
+            ->assertSee('$0.001250 / 1K tokens')
             ->assertSee('$1.25 / 1M');
+    });
+
+    it('lists prices per unit without a price per 1M', function () {
+        $row = AiModelPricing::create(['provider' => 'google', 'model' => 'image-model', 'pricing_unit' => 'images', 'input_per_1k' => 0, 'output_per_1k' => 0.04, 'active' => true]);
+
+        livewire(ListAiModelPricings::class)
+            ->assertCanSeeTableRecords([$row])
+            ->assertSee('$0.040000 / image')
+            ->assertDontSee('/ 1M');
     });
 });
 

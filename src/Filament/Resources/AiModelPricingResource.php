@@ -9,9 +9,11 @@ use Filament\Actions\EditAction;
 use Filament\AiMonitor\Filament\Concerns\HasAiMonitorNavigation;
 use Filament\AiMonitor\Filament\Resources\AiModelPricingResource\Pages;
 use Filament\AiMonitor\Models\AiModelPricing;
+use Filament\AiMonitor\Support\PricingUnit;
 use Filament\AiMonitor\Support\Provider;
 use Filament\Forms\Components;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -58,16 +60,27 @@ class AiModelPricingResource extends Resource
                     ->maxLength(100)
                     ->helperText('Matches exact model names and prefixes: "gpt-4o" also prices "gpt-4o-2024-08-06". Leave empty for a provider default or global fallback.'),
 
+                Components\Select::make('pricing_unit')
+                    ->label('Pricing unit')
+                    ->options(PricingUnit::options())
+                    ->default(PricingUnit::TOKENS)
+                    ->selectablePlaceholder(false)
+                    ->required()
+                    ->live()
+                    ->helperText('Tokens for text and embedding models. Choose images, seconds or requests for models billed per generated image, per second of video or audio, or per request.'),
+
                 Components\TextInput::make('input_per_1k')
-                    ->label('Input / 1K tokens (USD)')
+                    ->label(fn (Get $get): string => 'Input / ' . PricingUnit::per($get('pricing_unit')) . ' (USD)')
                     ->numeric()
                     ->required()
                     ->step('0.000001')
                     ->minValue(0)
-                    ->helperText('Provider price per 1M tokens ÷ 1000. e.g. $3.00 / 1M = 0.003'),
+                    ->helperText(fn (Get $get): string => PricingUnit::isPerToken($get('pricing_unit'))
+                        ? 'Provider price per 1M tokens ÷ 1000. e.g. $3.00 / 1M = 0.003'
+                        : 'Provider price per ' . PricingUnit::per($get('pricing_unit')) . ', not per 1K. Enter 0 if only the output is billed.'),
 
                 Components\TextInput::make('output_per_1k')
-                    ->label('Output / 1K tokens (USD)')
+                    ->label(fn (Get $get): string => 'Output / ' . PricingUnit::per($get('pricing_unit')) . ' (USD)')
                     ->numeric()
                     ->required()
                     ->step('0.000001')
@@ -103,17 +116,17 @@ class AiModelPricingResource extends Resource
                     ->searchable()
                     ->placeholder('* (default or fallback)'),
                 Tables\Columns\TextColumn::make('input_per_1k')
-                    ->label('Input / 1K')
+                    ->label('Input')
                     ->alignEnd()
                     ->sortable()
-                    ->formatStateUsing(fn ($state) => '$' . number_format((float) $state, 6))
-                    ->description(fn (AiModelPricing $record) => '$' . static::formatPerMillion($record->input_per_1k) . ' / 1M'),
+                    ->formatStateUsing(fn ($state, AiModelPricing $record) => static::formatPrice($state, $record))
+                    ->description(fn (AiModelPricing $record) => static::describePrice($record->input_per_1k, $record)),
                 Tables\Columns\TextColumn::make('output_per_1k')
-                    ->label('Output / 1K')
+                    ->label('Output')
                     ->alignEnd()
                     ->sortable()
-                    ->formatStateUsing(fn ($state) => '$' . number_format((float) $state, 6))
-                    ->description(fn (AiModelPricing $record) => '$' . static::formatPerMillion($record->output_per_1k) . ' / 1M'),
+                    ->formatStateUsing(fn ($state, AiModelPricing $record) => static::formatPrice($state, $record))
+                    ->description(fn (AiModelPricing $record) => static::describePrice($record->output_per_1k, $record)),
                 Tables\Columns\TextColumn::make('source')
                     ->label('Source')
                     ->badge()
@@ -144,6 +157,26 @@ class AiModelPricingResource extends Resource
                 ]),
             ])
             ->defaultSort('provider');
+    }
+
+    /**
+     * "$0.002500 / 1K tokens" for token rows, "$0.040000 / image" for rows priced per unit.
+     */
+    protected static function formatPrice(float | int | null $price, AiModelPricing $record): string
+    {
+        return '$' . number_format((float) $price, 6) . ' / ' . PricingUnit::per($record->pricing_unit);
+    }
+
+    /**
+     * The price per 1M tokens, which is how providers list it. Rows priced per unit have none.
+     */
+    protected static function describePrice(float | int | null $price, AiModelPricing $record): ?string
+    {
+        if (! PricingUnit::isPerToken($record->pricing_unit)) {
+            return null;
+        }
+
+        return '$' . static::formatPerMillion($price) . ' / 1M';
     }
 
     protected static function formatPerMillion(float | int | null $perThousand): string

@@ -4,6 +4,7 @@ namespace Filament\AiMonitor\Services;
 
 use Filament\AiMonitor\Models\AiModelPricing;
 use Filament\AiMonitor\Models\AiRequest;
+use Filament\AiMonitor\Support\PricingUnit;
 use Filament\AiMonitor\Support\Tenancy;
 use Illuminate\Support\Collection;
 
@@ -38,6 +39,7 @@ class AiPricingService
         return [
             'input_per_1k' => $row->input_per_1k,
             'output_per_1k' => $row->output_per_1k,
+            'pricing_unit' => $row->pricing_unit ?? PricingUnit::TOKENS,
         ];
     }
 
@@ -108,6 +110,9 @@ class AiPricingService
     /**
      * `$promptTokens` is the uncached input only. Prompt-cache reads and writes are passed
      * separately and cost the model's input price times the provider's cache multiplier.
+     *
+     * For a row priced per image, second or request, `$promptTokens` and `$completionTokens`
+     * are the number of input and output units, and cache tokens are not priced.
      */
     public function calculateCost(
         string $provider,
@@ -121,6 +126,13 @@ class AiPricingService
 
         if ($pricing === null) {
             return null;
+        }
+
+        if (! PricingUnit::isPerToken($pricing['pricing_unit'])) {
+            return round(
+                ($promptTokens ?? 0) * $pricing['input_per_1k'] + ($completionTokens ?? 0) * $pricing['output_per_1k'],
+                6,
+            );
         }
 
         $inputCost = (($promptTokens ?? 0) / 1000) * $pricing['input_per_1k']
